@@ -52,13 +52,17 @@ col_select = st.multiselect("Selecione variáveis numéricas:", colunas_numerica
 if col_select:
     st.dataframe(df[col_select].describe().T)
 
-    # Boxplots
+    # Boxplots com correção no eixo Y
     st.subheader("📦 Boxplot das Variáveis Selecionadas")
     for col in col_select:
-        fig, ax = plt.subplots()
-        sns.boxplot(x=df[col], ax=ax)
-        ax.set_title(f"Boxplot - {col}")
-        st.pyplot(fig)
+        dados_box = df[col].dropna()
+        if dados_box.nunique() > 1:
+            fig, ax = plt.subplots()
+            sns.boxplot(y=dados_box, ax=ax)
+            ax.set_title(f"Boxplot - {col}")
+            st.pyplot(fig)
+        else:
+            st.info(f"A variável '{col}' não tem dados suficientes para um boxplot.")
 
 # Correlação
 st.subheader("🔗 Correlação entre Variáveis")
