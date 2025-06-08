@@ -1,43 +1,80 @@
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Carregar a base
-df = pd.read_csv("base_vacivida_anonimizada.csv")
+# Carregar base de dados
+@st.cache_data
+def load_data():
+    return pd.read_csv("vacivida_base_unificada.csv", low_memory=False)
 
-st.title("📊 Dashboard Vacivida - Eventos Adversos Pós-Vacinação")
+df = load_data()
 
-st.sidebar.header("Filtros")
+st.title("📊 Análise Interativa - Base Vacivida")
 
-# Filtros
-sexo = st.sidebar.multiselect("Sexo", options=df['Sexo'].dropna().unique(), default=df['Sexo'].dropna().unique())
-faixa_etaria = st.sidebar.multiselect("Faixa Etária", options=df['Faixa Etária'].dropna().unique(), default=df['Faixa Etária'].dropna().unique())
-gestante = st.sidebar.multiselect("Gestante", options=df['Gestante'].dropna().unique(), default=df['Gestante'].dropna().unique())
+st.markdown("Explore estatísticas descritivas, correlações e distribuições de dados anonimizados sobre eventos adversos pós-vacinação.")
 
-# Aplicar filtros
-df_filtered = df[
-    (df['Sexo'].isin(sexo)) &
-    (df['Faixa Etária'].isin(faixa_etaria)) &
-    (df['Gestante'].isin(gestante))
-]
+# ----------------- FILTROS ------------------
+st.sidebar.header("🔎 Filtros")
 
-st.subheader("Resumo dos Eventos Filtrados")
-st.write(f"Total de registros: {len(df_filtered)}")
+# Idade
+if 'VCVD_IDADE' in df.columns:
+    min_idade = int(df['VCVD_IDADE'].min())
+    max_idade = int(df['VCVD_IDADE'].max())
+    idade_range = st.sidebar.slider("Idade", min_value=min_idade, max_value=max_idade, value=(min_idade, max_idade))
+    df = df[df['VCVD_IDADE'].between(*idade_range)]
 
-# Função para plotar gráficos
-def plot_bar(coluna, titulo):
-    fig, ax = plt.subplots()
-    df_filtered[coluna].value_counts(dropna=False).plot(kind='bar', ax=ax)
-    ax.set_title(titulo)
-    ax.set_xlabel(coluna)
-    ax.set_ylabel("Número de Eventos")
+# Sexo
+if 'VCVD_SEXO' in df.columns:
+    sexos = df['VCVD_SEXO'].dropna().unique().tolist()
+    sexo_select = st.sidebar.multiselect("Sexo", sexos, default=sexos)
+    df = df[df['VCVD_SEXO'].isin(sexo_select)]
+
+# UF do atendimento
+if 'VCVD_UF_ATENDIMENTO_MEDICO' in df.columns:
+    ufs = df['VCVD_UF_ATENDIMENTO_MEDICO'].dropna().unique().tolist()
+    uf_select = st.sidebar.multiselect("UF Atendimento Médico", ufs, default=ufs)
+    df = df[df['VCVD_UF_ATENDIMENTO_MEDICO'].isin(uf_select)]
+
+# Ano da Notificação
+if 'VCVD_DATA_NOTIFICACAO' in df.columns:
+    df['VCVD_DATA_NOTIFICACAO'] = pd.to_datetime(df['VCVD_DATA_NOTIFICACAO'], errors='coerce')
+    anos = df['VCVD_DATA_NOTIFICACAO'].dt.year.dropna().unique()
+    if len(anos) > 0:
+        ano_range = st.sidebar.slider("Ano da Notificação", int(anos.min()), int(anos.max()), (int(anos.min()), int(anos.max())))
+        df = df[df['VCVD_DATA_NOTIFICACAO'].dt.year.between(*ano_range)]
+
+# ----------------- ANÁLISES ------------------
+st.subheader("📈 Estatísticas Descritivas")
+colunas_numericas = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+col_select = st.multiselect("Selecione variáveis numéricas:", colunas_numericas, default=colunas_numericas[:5])
+
+if col_select:
+    st.dataframe(df[col_select].describe().T)
+
+    # Boxplots
+    st.subheader("📦 Boxplot das Variáveis Selecionadas")
+    for col in col_select:
+        fig, ax = plt.subplots()
+        sns.boxplot(x=df[col], ax=ax)
+        ax.set_title(f"Boxplot - {col}")
+        st.pyplot(fig)
+
+# Correlação
+st.subheader("🔗 Correlação entre Variáveis")
+if len(col_select) >= 2:
+    corr = df[col_select].corr()
+    fig, ax = plt.subplots(figsize=(8,6))
+    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
     st.pyplot(fig)
+else:
+    st.info("Selecione pelo menos duas variáveis para ver a correlação.")
 
-# Gráficos
-plot_bar("Sexo", "Distribuição por Sexo")
-plot_bar("Faixa Etária", "Distribuição por Faixa Etária")
-plot_bar("Evolução", "Evolução dos Casos")
-plot_bar("Classificação Final", "Classificação Final dos Casos")
-plot_bar("Gestante", "Eventos em Gestantes")
-plot_bar("Raça/Cor", "Distribuição por Raça/Cor")
+# Histograma
+st.subheader("📊 Distribuição de Variável Numérica")
+col_hist = st.selectbox("Escolha uma variável para o histograma:", colunas_numericas)
+if col_hist:
+    fig, ax = plt.subplots()
+    df[col_hist].dropna().hist(bins=20, ax=ax)
+    ax.set_title(f"Distribuição de {col_hist}")
+    st.pyplot(fig)
